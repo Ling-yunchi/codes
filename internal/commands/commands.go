@@ -111,31 +111,57 @@ func RunUpdate() {
 	ui.ShowInfo("Found %d available versions", len(versions))
 	fmt.Println()
 
-	// 显示最新5个版本
+	// 显示最新20个版本
 	ui.ShowInfo("Latest versions:")
-	endIndex := 5
-	if len(versions) < 5 {
-		endIndex = len(versions)
+	displayCount := 20
+	if len(versions) < displayCount {
+		displayCount = len(versions)
 	}
 
-	for i := 0; i < endIndex; i++ {
-		ui.ShowVersionItem(i+1, versions[i])
+	// 从最新版本开始显示（npm返回的是从旧到新）
+	startIndex := len(versions) - displayCount
+	for i := 0; i < displayCount; i++ {
+		versionIndex := startIndex + i
+		ui.ShowVersionItem(i+1, versions[versionIndex])
+	}
+
+	if len(versions) > displayCount {
+		fmt.Println()
+		ui.ShowInfo("(Showing %d most recent versions out of %d total)", displayCount, len(versions))
 	}
 
 	fmt.Println()
-	fmt.Printf("Select version to install (1-%d): ", endIndex)
+	fmt.Printf("Select version (1-%d, version number, or 'latest'): ", displayCount)
 	reader := bufio.NewReader(os.Stdin)
 	selection, _ := reader.ReadString('\n')
 	selection = strings.TrimSpace(selection)
 
-	if selectedIdx, err := strconv.Atoi(selection); err == nil && selectedIdx >= 1 && selectedIdx <= endIndex {
-		selectedVersion := versions[selectedIdx-1]
+	// 检查是否为空
+	if selection == "" {
+		ui.ShowWarning("No selection made. Installing latest...")
+		installClaude("latest")
+		return
+	}
+
+	// 检查是否是 "latest"
+	if selection == "latest" {
+		ui.ShowLoading("Installing Claude latest...")
+		installClaude("latest")
+		return
+	}
+
+	// 尝试作为数字解析（从显示列表中选择）
+	if selectedIdx, err := strconv.Atoi(selection); err == nil && selectedIdx >= 1 && selectedIdx <= displayCount {
+		versionIndex := startIndex + selectedIdx - 1
+		selectedVersion := versions[versionIndex]
 		ui.ShowLoading("Installing Claude %s...", selectedVersion)
 		installClaude(selectedVersion)
-	} else {
-		ui.ShowWarning("Invalid selection. Installing latest...")
-		installClaude("latest")
+		return
 	}
+
+	// 作为自定义版本号处理
+	ui.ShowLoading("Installing Claude %s...", selection)
+	installClaude(selection)
 }
 
 func RunAdd() {
@@ -319,7 +345,7 @@ func RunClaudeWithConfig(args []string) {
 	// Load and apply config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		ui.ShowError("Error loading config: %v", err)
+		ui.ShowError("Error loading config", err)
 		os.Exit(1)
 	}
 
@@ -517,4 +543,163 @@ func checkForUpdates() {
 		//     ui.ShowInfo("New version %s available! Run 'codes update' to upgrade.", release.TagName)
 		// }
 	}()
+}
+
+// RunStart 快速启动 Claude Code
+func RunStart(args []string) {
+	var targetDir string
+
+	if len(args) > 0 {
+		input := args[0]
+
+		// 检查是否是项目别名
+		if projectPath, exists := config.GetProjectPath(input); exists {
+			targetDir = projectPath
+			ui.ShowInfo("Using project: %s -> %s", input, targetDir)
+		} else {
+			// 作为路径处理
+			absPath, err := filepath.Abs(input)
+			if err != nil {
+				ui.ShowError("Invalid path", err)
+				os.Exit(1)
+			}
+			targetDir = absPath
+		}
+
+		// 验证目录是否存在
+		if _, err := os.Stat(targetDir); os.IsNotExist(err) {
+			ui.ShowError("Directory does not exist", err)
+			os.Exit(1)
+		}
+	} else {
+		// 没有参数，使用上次目录
+		lastDir, err := config.GetLastWorkDir()
+		if err != nil {
+			ui.ShowError("Failed to get last working directory", err)
+			os.Exit(1)
+		}
+		targetDir = lastDir
+		ui.ShowInfo("Using last directory: %s", targetDir)
+	}
+
+	// 保存当前目录为上次目录
+	if err := config.SaveLastWorkDir(targetDir); err != nil {
+		ui.ShowWarning("Failed to save working directory: %v", err)
+	}
+
+	// 启动 Claude
+	runClaudeInDirectory(targetDir)
+}
+
+// RunProjectAdd 添加项目别名
+func RunProjectAdd(name, path string) {
+	// 转换为绝对路径
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		ui.ShowError("Invalid path", err)
+		return
+	}
+
+	// 验证目录是否存在
+	if _, err := os.Stat(absPath); os.IsNotExist(err) {
+		ui.ShowError("Directory does not exist", err)
+		return
+	}
+
+	// 添加项目
+	if err := config.AddProject(name, absPath); err != nil {
+		ui.ShowError("Failed to add project", err)
+		return
+	}
+
+	ui.ShowSuccess("Project '%s' added successfully!", name)
+	ui.ShowInfo("Path: %s", absPath)
+	ui.ShowInfo("Usage: codes start %s", name)
+}
+
+// RunProjectRemove 删除项目别名
+func RunProjectRemove(name string) {
+	// 检查项目是否存在
+	if _, exists := config.GetProjectPath(name); !exists {
+		ui.ShowWarning("Project '%s' does not exist", name)
+		return
+	}
+
+	// 删除项目
+	if err := config.RemoveProject(name); err != nil {
+		ui.ShowError("Failed to remove project", err)
+		return
+	}
+
+	ui.ShowSuccess("Project '%s' removed successfully!", name)
+}
+
+// RunProjectList 列出所有项目
+func RunProjectList() {
+	projects, err := config.ListProjects()
+	if err != nil {
+		ui.ShowError("Failed to load projects", err)
+		return
+	}
+
+	if len(projects) == 0 {
+		ui.ShowInfo("No projects configured yet")
+		ui.ShowInfo("Add a project with: codes project add <name> <path>")
+		return
+	}
+
+	fmt.Println()
+	ui.ShowHeader("Configured Projects")
+	fmt.Println()
+
+	i := 1
+	for name, path := range projects {
+		// 检查目录是否仍然存在
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			ui.ShowWarning("%d. %s -> %s (not found)", i, name, path)
+		} else {
+			ui.ShowInfo("%d. %s -> %s", i, name, path)
+		}
+		i++
+	}
+
+	fmt.Println()
+	ui.ShowInfo("Start a project with: codes start <name>")
+}
+
+// runClaudeInDirectory 在指定目录运行 Claude
+func runClaudeInDirectory(dir string) {
+	// 调用更新检查
+	checkForUpdates()
+
+	// Load and apply config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		ui.ShowError("Error loading config", err)
+		os.Exit(1)
+	}
+
+	// Find selected config
+	var selectedConfig config.APIConfig
+	for _, c := range cfg.Configs {
+		if c.Name == cfg.Default {
+			selectedConfig = c
+			break
+		}
+	}
+
+	// Set environment variables
+	os.Setenv("ANTHROPIC_BASE_URL", selectedConfig.AnthropicBaseURL)
+	os.Setenv("ANTHROPIC_AUTH_TOKEN", selectedConfig.AnthropicAuthToken)
+
+	ui.ShowInfo("Using configuration: %s", selectedConfig.Name)
+	ui.ShowInfo("Working directory: %s", dir)
+
+	// Run claude with dangerous permissions in specified directory
+	cmd := exec.Command("claude", "--dangerously-skip-permissions")
+	cmd.Dir = dir // 设置工作目录，而不是作为参数传递
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
 }
