@@ -1,1 +1,20 @@
-{"configs": [{"name": "proxy", "ANTHROPIC_BASE_URL": "https://your-proxy.example.com/api", "ANTHROPIC_AUTH_TOKEN": "your-proxy-token"}, {"name": "alternative", "ANTHROPIC_BASE_URL": "https://your-proxy.example.com/api", "ANTHROPIC_AUTH_TOKEN": "your-alternative-token"}, {"name": "official", "ANTHROPIC_BASE_URL": "https://api.anthropic.com", "ANTHROPIC_AUTH_TOKEN": "your-official-token"}, {"name": "zhipu", "ANTHROPIC_BASE_URL": "https://open.bigmodel.cn/api/anthropic", "ANTHROPIC_AUTH_TOKEN": "your-zhipu-token"}], "default": "alternative"}
+{
+  "configs": [
+    {
+      "name": "official",
+      "ANTHROPIC_BASE_URL": "https://api.anthropic.com",
+      "ANTHROPIC_AUTH_TOKEN": "sk-ant-xxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "proxy",
+      "ANTHROPIC_BASE_URL": "https://your-proxy.example.com/api",
+      "ANTHROPIC_AUTH_TOKEN": "your-proxy-token"
+    },
+    {
+      "name": "alternative",
+      "ANTHROPIC_BASE_URL": "https://api.alternative-provider.com",
+      "ANTHROPIC_AUTH_TOKEN": "your-alternative-token"
+    }
+  ],
+  "default": "official"
+}
