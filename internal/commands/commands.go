@@ -1,0 +1,354 @@
+package commands
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+
+	"codes/internal/config"
+	"codes/internal/ui"
+)
+
+func runVersion() {
+	fmt.Printf("codes version dev (built unknown)\n")
+}
+
+func runSelect() {
+	// Load config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		ui.ShowError("Error loading config", err)
+		return
+	}
+
+	fmt.Println()
+	ui.ShowHeader("Available Claude Configurations")
+	fmt.Println()
+
+	for i, c := range cfg.Configs {
+		if c.Name == cfg.Default {
+			if c.Status == "active" {
+				ui.ShowCurrentConfig(i+1, c.Name, c.AnthropicBaseURL)
+				ui.ShowInfo("     Status: Active")
+			} else if c.Status == "inactive" {
+				ui.ShowCurrentConfig(i+1, c.Name, c.AnthropicBaseURL)
+				ui.ShowWarning("     Status: Inactive")
+			} else {
+				ui.ShowCurrentConfig(i+1, c.Name, c.AnthropicBaseURL)
+			}
+		} else {
+			if c.Status == "active" {
+				ui.ShowConfigOption(i+1, c.Name, c.AnthropicBaseURL)
+				ui.ShowInfo("     Status: Active")
+			} else if c.Status == "inactive" {
+				ui.ShowConfigOption(i+1, c.Name, c.AnthropicBaseURL)
+				ui.ShowWarning("     Status: Inactive")
+			} else {
+				ui.ShowConfigOption(i+1, c.Name, c.AnthropicBaseURL)
+			}
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("Select configuration (or press Enter to start with current):")
+	fmt.Print("Choice: ")
+	reader := bufio.NewReader(os.Stdin)
+	selection, _ := reader.ReadString('\n')
+	selection = strings.TrimSpace(selection)
+
+	if selection == "" {
+		// 直接启动Claude
+		ui.ShowSuccess("Starting with current configuration...")
+		runClaudeWithConfig([]string{})
+		return
+	}
+
+	if selectedIdx, err := strconv.Atoi(selection); err == nil && selectedIdx >= 1 && selectedIdx <= len(cfg.Configs) {
+		selectedConfig := cfg.Configs[selectedIdx-1]
+		cfg.Default = selectedConfig.Name
+
+		// Save config
+		if err := config.SaveConfig(cfg); err != nil {
+			ui.ShowError("Failed to save config", err)
+			return
+		}
+
+		ui.ShowSuccess("Selected: %s", selectedConfig.Name)
+		ui.ShowInfo("API: %s", selectedConfig.AnthropicBaseURL)
+
+		// 立即启动Claude
+		runClaudeWithConfig([]string{})
+	} else {
+		ui.ShowWarning("Invalid selection, starting with current config...")
+		runClaudeWithConfig([]string{})
+	}
+}
+
+func runUpdate() {
+	ui.ShowHeader("Claude Version Manager")
+	ui.ShowLoading("Fetching available versions...")
+
+	cmd := exec.Command("npm", "view", "@anthropic-ai/claude-code", "versions", "--json")
+	output, err := cmd.Output()
+	if err != nil {
+		ui.ShowError("Failed to fetch Claude versions", nil)
+		return
+	}
+
+	var versions []string
+	if err := json.Unmarshal(output, &versions); err != nil {
+		ui.ShowError("Failed to parse versions", nil)
+		return
+	}
+
+	fmt.Println()
+	ui.ShowInfo("Found %d available versions", len(versions))
+	fmt.Println()
+
+	// 显示最新5个版本
+	ui.ShowInfo("Latest versions:")
+	endIndex := 5
+	if len(versions) < 5 {
+		endIndex = len(versions)
+	}
+
+	for i := 0; i < endIndex; i++ {
+		ui.ShowVersionItem(i+1, versions[i])
+	}
+
+	fmt.Println()
+	fmt.Printf("Select version to install (1-%d): ", endIndex)
+	reader := bufio.NewReader(os.Stdin)
+	selection, _ := reader.ReadString('\n')
+	selection = strings.TrimSpace(selection)
+
+	if selectedIdx, err := strconv.Atoi(selection); err == nil && selectedIdx >= 1 && selectedIdx <= endIndex {
+		selectedVersion := versions[selectedIdx-1]
+		ui.ShowLoading("Installing Claude %s...", selectedVersion)
+		installClaude(selectedVersion)
+	} else {
+		ui.ShowWarning("Invalid selection. Installing latest...")
+		installClaude("latest")
+	}
+}
+
+func runAdd() {
+	ui.ShowHeader("Add New Claude Configuration")
+
+	// 检查是否已存在配置文件，如果不存在则创建
+	var configData config.Config
+	if _, err := os.Stat(config.ConfigPath); err == nil {
+		// 读取现有配置
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			ui.ShowError("Error loading existing config", err)
+			return
+		}
+		configData = *cfg
+	} else {
+		// 创建新的配置
+		configData.Configs = []config.APIConfig{}
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+
+	// 获取配置名称
+	fmt.Print("Enter configuration name: ")
+	name, _ := reader.ReadString('\n')
+	name = strings.TrimSpace(name)
+	if name == "" {
+		ui.ShowError("Configuration name cannot be empty", nil)
+		return
+	}
+
+	// 检查名称是否已存在
+	for _, c := range configData.Configs {
+		if c.Name == name {
+			ui.ShowError("Configuration '%s' already exists", fmt.Errorf("name '%s' already exists", name))
+			return
+		}
+	}
+
+	// 获取API URL
+	fmt.Print("Enter ANTHROPIC_BASE_URL: ")
+	baseURL, _ := reader.ReadString('\n')
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		ui.ShowError("Base URL cannot be empty", nil)
+		return
+	}
+
+	// 验证URL格式
+	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
+		ui.ShowError("Invalid URL format. Must start with http:// or https://", nil)
+		return
+	}
+
+	// 获取API Token
+	fmt.Print("Enter ANTHROPIC_AUTH_TOKEN: ")
+	token, _ := reader.ReadString('\n')
+	token = strings.TrimSpace(token)
+	if token == "" {
+		ui.ShowError("Auth token cannot be empty", nil)
+		return
+	}
+
+	// 测试API连接
+	ui.ShowLoading("Testing API connection")
+	testConfig := config.APIConfig{
+		Name:               name,
+		AnthropicBaseURL:   baseURL,
+		AnthropicAuthToken: token,
+	}
+
+	if config.TestAPIConfig(testConfig) {
+		ui.ShowSuccess("API connection successful!")
+		testConfig.Status = "active"
+	} else {
+		ui.ShowWarning("API connection failed. Configuration added but marked as inactive")
+		testConfig.Status = "inactive"
+	}
+
+	// 添加新配置
+	configData.Configs = append(configData.Configs, testConfig)
+
+	// 如果这是第一个配置，设置为默认
+	if len(configData.Configs) == 1 {
+		configData.Default = name
+		ui.ShowInfo("Set '%s' as default configuration", name)
+	}
+
+	// 保存配置
+	if err := config.SaveConfig(&configData); err != nil {
+		ui.ShowError("Failed to save config", err)
+		return
+	}
+
+	ui.ShowSuccess("Configuration '%s' added successfully!", name)
+	ui.ShowInfo("API: %s", baseURL)
+	if testConfig.Status == "active" {
+		ui.ShowInfo("Status: Active")
+	} else {
+		ui.ShowWarning("Status: Inactive (API test failed)")
+	}
+}
+
+func runInstall() {
+	ui.ShowHeader("Installing codes CLI")
+
+	// 获取当前可执行文件路径
+	executablePath, err := os.Executable()
+	if err != nil {
+		ui.ShowError("Failed to get executable path", err)
+		return
+	}
+
+	// 确定安装目标路径
+	var targetDir string
+	var installPath string
+
+	switch runtime.GOOS {
+	case "windows":
+		// Windows: 安装到用户目录下的Scripts目录
+		homeDir, _ := os.UserHomeDir()
+		targetDir = filepath.Join(homeDir, "go", "bin")
+		installPath = filepath.Join(targetDir, "codes.exe")
+	default:
+		// Linux/macOS: 安装到/usr/local/bin或~/bin
+		if ui.CanWriteTo("/usr/local/bin") {
+			targetDir = "/usr/local/bin"
+			installPath = filepath.Join(targetDir, "codes")
+		} else {
+			homeDir, _ := os.UserHomeDir()
+			targetDir = filepath.Join(homeDir, "bin")
+			installPath = filepath.Join(targetDir, "codes")
+		}
+	}
+
+	ui.ShowInfo("Installing to: %s", installPath)
+
+	// 创建目标目录
+	err = os.MkdirAll(targetDir, 0755)
+	if err != nil {
+		ui.ShowError("Failed to create target directory", err)
+		return
+	}
+
+	// 复制文件
+	sourceData, err := os.ReadFile(executablePath)
+	if err != nil {
+		ui.ShowError("Failed to read executable", err)
+		return
+	}
+
+	err = os.WriteFile(installPath, sourceData, 0755)
+	if err != nil {
+		ui.ShowError("Failed to write to target location", err)
+		return
+	}
+
+	// 验证安装
+	if _, err := os.Stat(installPath); err == nil {
+		ui.ShowSuccess("codes installed successfully!")
+		ui.ShowInfo("Installed to: %s", installPath)
+
+		// 提示添加到PATH
+		switch runtime.GOOS {
+		case "windows":
+			ui.ShowInfo("Add %s to your PATH environment variable", targetDir)
+		default:
+			if targetDir != "/usr/local/bin" {
+				ui.ShowInfo("Add %s to your PATH in your shell profile", targetDir)
+			}
+		}
+	} else {
+		ui.ShowError("Installation verification failed", err)
+	}
+}
+
+func runClaudeWithConfig(args []string) {
+	// Load and apply config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		ui.ShowError("Error loading config: %v", err)
+		os.Exit(1)
+	}
+
+	// Find selected config
+	var selectedConfig config.APIConfig
+	for _, c := range cfg.Configs {
+		if c.Name == cfg.Default {
+			selectedConfig = c
+			break
+		}
+	}
+
+	// Set environment variables
+	os.Setenv("ANTHROPIC_BASE_URL", selectedConfig.AnthropicBaseURL)
+	os.Setenv("ANTROPIC_AUTH_TOKEN", selectedConfig.AnthropicAuthToken)
+
+	ui.ShowInfo("Using configuration: %s (%s)", selectedConfig.Name, selectedConfig.AnthropicBaseURL)
+	// Run claude with dangerous permissions
+	cmd := exec.Command("claude", append([]string{"--dangerously-skip-permissions"}, args...)...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
+}
+
+func installClaude(version string) {
+	cmd := exec.Command("npm", "install", "-g", fmt.Sprintf("@anthropic-ai/claude-code@%s", version))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		ui.ShowError("Installation failed", nil)
+		os.Exit(1)
+	}
+	ui.ShowSuccess("Claude installed successfully!")
+}
