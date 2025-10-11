@@ -15,13 +15,13 @@ A powerful CLI tool for managing multiple Claude Code configurations with ease. 
 
 ### Pre-built Binaries
 
-Download the latest release for your platform from the [releases page](https://github.com/yourusername/codes/releases).
+Download the latest release for your platform from the [releases page](https://github.com/ourines/codes/releases).
 
 #### Linux / macOS
 
 ```bash
 # Download and extract (example for linux-amd64)
-curl -L https://github.com/yourusername/codes/releases/latest/download/codes-linux-amd64 -o codes
+curl -L https://github.com/ourines/codes/releases/latest/download/codes-linux-amd64 -o codes
 chmod +x codes
 
 # Install to system path
@@ -44,7 +44,7 @@ Requirements:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/codes.git
+git clone https://github.com/ourines/codes.git
 cd codes
 
 # Build the binary
