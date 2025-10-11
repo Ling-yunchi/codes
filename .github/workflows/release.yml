@@ -46,18 +46,38 @@ jobs:
       run: go mod download
 
     - name: Build codes
+      shell: bash
       run: |
-        go build -o codes ./cmd/codes
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          go build -o codes.exe ./cmd/codes
+        else
+          go build -o codes ./cmd/codes
+        fi
 
     - name: Test
+      shell: bash
       run: |
-        ./codes version
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          ./codes.exe version
+        else
+          ./codes version
+        fi
+
+    - name: Set binary name
+      id: binary
+      shell: bash
+      run: |
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          echo "name=codes.exe" >> $GITHUB_OUTPUT
+        else
+          echo "name=codes" >> $GITHUB_OUTPUT
+        fi
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: codes-${{ matrix.goos }}-${{ matrix.goarch }}
-        path: codes
+        path: ${{ steps.binary.outputs.name }}
         retention-days: 7
 
   release:
@@ -72,10 +92,23 @@ jobs:
       with:
         path: artifacts
 
+    - name: Prepare release files
+      run: |
+        mkdir -p release
+        for dir in artifacts/codes-*; do
+          platform=$(basename $dir | sed 's/codes-//')
+          if [ -f "$dir/codes.exe" ]; then
+            mv "$dir/codes.exe" "release/codes-$platform.exe"
+          elif [ -f "$dir/codes" ]; then
+            mv "$dir/codes" "release/codes-$platform"
+          fi
+        done
+        ls -la release/
+
     - name: Create release
       uses: softprops/action-gh-release@v2
       with:
-        files: artifacts/**/*
+        files: release/*
         draft: false
         prerelease: false
         body: |
