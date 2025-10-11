@@ -15,6 +15,14 @@ import (
 	"codes/internal/ui"
 )
 
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func RunVersion() {
 	fmt.Printf("codes version dev (built unknown)\n")
 }
@@ -411,9 +419,90 @@ func RunInit() {
 	}
 	fmt.Println()
 
-	// 2. Check if config file exists
+	// 2. Check for existing environment variables
+	ui.ShowInfo("Checking for existing Claude configuration...")
+	baseURL := os.Getenv("ANTHROPIC_BASE_URL")
+	authToken := os.Getenv("ANTHROPIC_AUTH_TOKEN")
+
+	hasEnvConfig := false
+	if baseURL != "" && authToken != "" {
+		ui.ShowSuccess("✓ Found existing configuration in environment variables")
+		ui.ShowInfo("  ANTHROPIC_BASE_URL: %s", baseURL)
+		ui.ShowInfo("  ANTHROPIC_AUTH_TOKEN: %s...", authToken[:min(10, len(authToken))])
+		hasEnvConfig = true
+	} else if baseURL != "" || authToken != "" {
+		ui.ShowWarning("⚠ Incomplete environment configuration detected")
+		if baseURL != "" {
+			ui.ShowInfo("  ANTHROPIC_BASE_URL: %s", baseURL)
+		}
+		if authToken != "" {
+			ui.ShowInfo("  ANTHROPIC_AUTH_TOKEN: configured")
+		}
+	}
+	fmt.Println()
+
+	// 3. Check if config file exists
 	ui.ShowInfo("Checking configuration file...")
-	if _, err := os.Stat(config.ConfigPath); err != nil {
+	configExists := false
+	if _, err := os.Stat(config.ConfigPath); err == nil {
+		configExists = true
+	}
+
+	// If env config exists but no codes config, offer to import
+	if hasEnvConfig && !configExists {
+		fmt.Println()
+		ui.ShowInfo("Would you like to import this configuration? (y/n): ")
+		reader := bufio.NewReader(os.Stdin)
+		response, _ := reader.ReadString('\n')
+		response = strings.TrimSpace(strings.ToLower(response))
+
+		if response == "y" || response == "yes" {
+			// Prompt for configuration name
+			fmt.Print("Enter a name for this configuration (default: imported): ")
+			name, _ := reader.ReadString('\n')
+			name = strings.TrimSpace(name)
+			if name == "" {
+				name = "imported"
+			}
+
+			// Create and test configuration
+			ui.ShowLoading("Testing API connection...")
+			testConfig := config.APIConfig{
+				Name:               name,
+				AnthropicBaseURL:   baseURL,
+				AnthropicAuthToken: authToken,
+			}
+
+			var cfg config.Config
+			cfg.Configs = []config.APIConfig{testConfig}
+			cfg.Default = name
+
+			if config.TestAPIConfig(testConfig) {
+				ui.ShowSuccess("✓ API connection successful!")
+				testConfig.Status = "active"
+			} else {
+				ui.ShowWarning("⚠ API connection failed, but configuration will be saved")
+				testConfig.Status = "inactive"
+			}
+
+			cfg.Configs[0] = testConfig
+
+			// Save configuration
+			if err := config.SaveConfig(&cfg); err != nil {
+				ui.ShowError("Failed to save configuration", err)
+				allGood = false
+			} else {
+				ui.ShowSuccess("✓ Configuration imported successfully!")
+				ui.ShowInfo("  Name: %s", name)
+				ui.ShowInfo("  Status: %s", testConfig.Status)
+				configExists = true
+			}
+			fmt.Println()
+		}
+	}
+
+	// Continue with normal config check
+	if !configExists {
 		ui.ShowError("✗ Configuration file not found", nil)
 		ui.ShowInfo("  Expected location: %s", config.ConfigPath)
 		ui.ShowWarning("  Run 'codes add' to create your first configuration")
@@ -422,7 +511,7 @@ func RunInit() {
 		ui.ShowSuccess("✓ Configuration file exists")
 		ui.ShowInfo("  Location: %s", config.ConfigPath)
 
-		// 3. Validate configuration
+		// 4. Validate configuration
 		cfg, err := config.LoadConfig()
 		if err != nil {
 			ui.ShowError("✗ Failed to load configuration", err)
