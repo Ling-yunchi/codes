@@ -140,6 +140,44 @@ var ConfigGetCmd = &cobra.Command{
 	},
 }
 
+// DefaultBehaviorCmd represents the default behavior command
+var DefaultBehaviorCmd = &cobra.Command{
+	Use:   "defaultbehavior",
+	Short: "Manage default behavior setting",
+	Long:  "Configure what directory to use when starting Claude without arguments",
+}
+
+// DefaultBehaviorSetCmd represents the defaultbehavior set command
+var DefaultBehaviorSetCmd = &cobra.Command{
+	Use:   "set <behavior>",
+	Short: "Set the default behavior",
+	Long:  "Set the default startup behavior: 'current' (current directory), 'last' (last used directory), 'home' (home directory)",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		RunDefaultBehaviorSet(args[0])
+	},
+}
+
+// DefaultBehaviorGetCmd represents the defaultbehavior get command
+var DefaultBehaviorGetCmd = &cobra.Command{
+	Use:   "get",
+	Short: "Get the current default behavior",
+	Long:  "Show the current default behavior setting",
+	Run: func(cmd *cobra.Command, args []string) {
+		RunDefaultBehaviorGet()
+	},
+}
+
+// DefaultBehaviorResetCmd represents the defaultbehavior reset command
+var DefaultBehaviorResetCmd = &cobra.Command{
+	Use:   "reset",
+	Short: "Reset to default behavior",
+	Long:  "Reset the default behavior to 'current' (default)",
+	Run: func(cmd *cobra.Command, args []string) {
+		RunDefaultBehaviorReset()
+	},
+}
+
 // ProjectAddCmd represents the project add command
 var ProjectAddCmd = &cobra.Command{
 	Use:   "add <name> <path>",
@@ -179,4 +217,8 @@ func init() {
 
 	ConfigCmd.AddCommand(ConfigSetCmd)
 	ConfigCmd.AddCommand(ConfigGetCmd)
+
+	DefaultBehaviorCmd.AddCommand(DefaultBehaviorSetCmd)
+	DefaultBehaviorCmd.AddCommand(DefaultBehaviorGetCmd)
+	DefaultBehaviorCmd.AddCommand(DefaultBehaviorResetCmd)
 }

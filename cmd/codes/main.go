@@ -26,6 +26,7 @@ func init() {
 	rootCmd.AddCommand(commands.StartCmd)
 	rootCmd.AddCommand(commands.ProjectCmd)
 	rootCmd.AddCommand(commands.ConfigCmd)
+	rootCmd.AddCommand(commands.DefaultBehaviorCmd)
 
 	// 设置默认运行时行为 - 现在使用智能启动
 	rootCmd.Run = func(cmd *cobra.Command, args []string) {

@@ -1183,3 +1183,98 @@ func RunConfigGet(args []string) {
 		fmt.Printf("  projects: %d configured\n", len(cfg.Projects))
 	}
 }
+
+// RunDefaultBehaviorSet 设置默认行为
+func RunDefaultBehaviorSet(behavior string) {
+	// 验证值
+	if behavior != "current" && behavior != "last" && behavior != "home" {
+		ui.ShowError("Invalid behavior. Must be 'current', 'last', or 'home'", nil)
+		fmt.Println()
+		ui.ShowInfo("Available behaviors:")
+		ui.ShowInfo("  current - Use current working directory")
+		ui.ShowInfo("  last    - Use last used directory")
+		ui.ShowInfo("  home    - Use home directory")
+		return
+	}
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		ui.ShowError("Error loading config", err)
+		return
+	}
+
+	oldBehavior := cfg.DefaultBehavior
+	if oldBehavior == "" {
+		oldBehavior = "current"
+	}
+
+	cfg.DefaultBehavior = behavior
+
+	if err := config.SaveConfig(cfg); err != nil {
+		ui.ShowError("Error saving config", err)
+		return
+	}
+
+	ui.ShowSuccess("Default behavior set to: %s", behavior)
+	fmt.Println()
+	ui.ShowInfo("This will affect where Claude starts when you run 'codes' without arguments.")
+	ui.ShowInfo("Previous behavior: %s", oldBehavior)
+	ui.ShowInfo("New behavior: %s", behavior)
+
+	// 显示帮助信息
+	fmt.Println()
+	ui.ShowInfo("Examples:")
+	ui.ShowInfo("  codes                    - Start Claude with %s directory", behavior)
+	ui.ShowInfo("  codes start project-name - Start Claude in specific project")
+	ui.ShowInfo("  codes start /path/to/dir - Start Claude in specific directory")
+}
+
+// RunDefaultBehaviorGet 获取当前默认行为
+func RunDefaultBehaviorGet() {
+	currentBehavior := config.GetDefaultBehavior()
+
+	fmt.Println("Current default behavior:")
+	ui.ShowInfo("  %s", currentBehavior)
+
+	fmt.Println()
+	ui.ShowInfo("Description:")
+	switch currentBehavior {
+	case "current":
+		ui.ShowInfo("  Claude will start in the current working directory")
+	case "last":
+		ui.ShowInfo("  Claude will start in the last used directory")
+	case "home":
+		ui.ShowInfo("  Claude will start in your home directory")
+	}
+
+	fmt.Println()
+	ui.ShowInfo("To change this setting:")
+	ui.ShowInfo("  codes defaultbehavior set <current|last|home>")
+}
+
+// RunDefaultBehaviorReset 重置默认行为
+func RunDefaultBehaviorReset() {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		ui.ShowError("Error loading config", err)
+		return
+	}
+
+	oldBehavior := cfg.DefaultBehavior
+	if oldBehavior == "" {
+		oldBehavior = "current"
+	}
+
+	cfg.DefaultBehavior = ""
+
+	if err := config.SaveConfig(cfg); err != nil {
+		ui.ShowError("Error saving config", err)
+		return
+	}
+
+	ui.ShowSuccess("Default behavior reset to: current")
+	fmt.Println()
+	ui.ShowInfo("Previous behavior: %s", oldBehavior)
+	ui.ShowInfo("New behavior: current (default)")
+	ui.ShowInfo("Claude will now start in the current working directory by default.")
+}
