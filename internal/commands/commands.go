@@ -508,7 +508,7 @@ func RunClaudeWithConfig(args []string) {
 
 	// Build claude command with or without --dangerously-skip-permissions
 	var claudeArgs []string
-	if config.ShouldSkipPermissions(&selectedConfig) {
+	if config.ShouldSkipPermissionsWithConfig(&selectedConfig, cfg) {
 		claudeArgs = []string{"--dangerously-skip-permissions"}
 	}
 
@@ -984,14 +984,14 @@ func runClaudeInDirectory(dir string) {
 	}
 
 	// Set environment variables
-	config.SetEnvironmentVars(&selectedConfig)
+	config.SetEnvironmentVarsWithConfig(&selectedConfig, cfg)
 
 	ui.ShowInfo("Using configuration: %s", selectedConfig.Name)
 	ui.ShowInfo("Working directory: %s", dir)
 
 	// Build claude command with or without --dangerously-skip-permissions
 	var claudeArgs []string
-	if config.ShouldSkipPermissions(&selectedConfig) {
+	if config.ShouldSkipPermissionsWithConfig(&selectedConfig, cfg) {
 		claudeArgs = []string{"--dangerously-skip-permissions"}
 	}
 

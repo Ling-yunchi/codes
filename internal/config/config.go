@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -270,9 +271,20 @@ func ListProjects() (map[string]string, error) {
 
 // ShouldSkipPermissions 判断是否应该跳过权限检查
 func ShouldSkipPermissions(apiConfig *APIConfig) bool {
-	cfg, err := LoadConfig()
-	if err != nil {
-		return false
+	return ShouldSkipPermissionsWithConfig(apiConfig, nil)
+}
+
+// ShouldSkipPermissionsWithConfig 使用已加载的配置判断是否应该跳过权限检查
+func ShouldSkipPermissionsWithConfig(apiConfig *APIConfig, cfg *Config) bool {
+	// 如果没有提供配置，加载配置
+	var loadedConfig *Config
+	if cfg == nil {
+		var err error
+		loadedConfig, err = LoadConfig()
+		if err != nil {
+			return false
+		}
+		cfg = loadedConfig
 	}
 
 	// 如果 API 配置中有单独的设置，使用单独设置
@@ -298,9 +310,16 @@ func GetEnvironmentVars(apiConfig *APIConfig) map[string]string {
 
 // SetEnvironmentVars 设置环境变量到当前进程
 func SetEnvironmentVars(apiConfig *APIConfig) {
+	SetEnvironmentVarsWithConfig(apiConfig, nil)
+}
+
+// SetEnvironmentVarsWithConfig 使用已加载的配置设置环境变量
+func SetEnvironmentVarsWithConfig(apiConfig *APIConfig, cfg *Config) {
 	envVars := GetEnvironmentVars(apiConfig)
 	for key, value := range envVars {
-		os.Setenv(key, value)
+		if err := os.Setenv(key, value); err != nil {
+			log.Printf("Warning: Failed to set environment variable %s: %v", key, err)
+		}
 	}
 }
 

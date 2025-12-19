@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"codes/internal/ui"
+	"strings"
 )
 
 // InitCmd represents the init command
@@ -192,14 +193,15 @@ var SkipPermissionsSetCmd = &cobra.Command{
 	Long:  "Set whether to use --dangerously-skip-permissions for all configurations that don't have their own setting",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		value := args[0]
+		value := strings.ToLower(args[0])
 		var skip bool
-		if value == "true" {
+		switch value {
+		case "true", "t", "yes", "y", "1":
 			skip = true
-		} else if value == "false" {
+		case "false", "f", "no", "n", "0":
 			skip = false
-		} else {
-			ui.ShowError("Invalid value. Must be 'true' or 'false'", nil)
+		default:
+			ui.ShowError("Invalid value. Must be 'true' or 'false' (case-insensitive)", nil)
 			return
 		}
 		RunSkipPermissionsSet(skip)
